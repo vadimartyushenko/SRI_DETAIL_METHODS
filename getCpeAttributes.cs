@@ -1,4 +1,3 @@
-#
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,12 +5,6 @@ using System.Text;
 
 namespace DatumNode
 {
-  public class Equipment
-  {
-    public string equipment_model { get; set; }
-    public string equipment_condition { get; set; }
-  }
-
   public class Parameter
   { 
     public string parameter_name { get; set; }
@@ -44,7 +37,7 @@ namespace DatumNode
         var cpeInfoList = datumnode.ExecuteQuery("*.*.ossResource.sltu.common.getcpeparams", new Dictionary<string, object>()
         {
           { "cpeid", cpeId }
-        }).Elements.Where(x => x.Name == "Entity").Select(x =>
+        }).Elements.Where(x => x.Name == "Entity" && !x.Element("descriptionname").ToString().Contains("Сервисные модели")).Select(x =>
         {
           return new Parameter()
           {
@@ -55,19 +48,17 @@ namespace DatumNode
 
         var cpeInfo = new DatumNode.Parameter
         {
-          parameter_name = "cpe_id",
+          parameter_name = "Идентификатор в Склад CPE",
           parameter_value = cpeId.Value.ToString()
         };
 
         result.Add(cpeInfo);
         result.AddRange(cpeInfoList);
-
       }
       catch (Exception e)
       {
         throw new Exception(e.Message);
       }
-
     }
   }
 }
