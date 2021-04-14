@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Xml.Linq;
 
 namespace DatumNode
 {
@@ -9,15 +10,20 @@ namespace DatumNode
   { 
     public string parameter_name { get; set; }
     public string parameter_value { get; set; }
+    public Parameter(string name, string val)
+    {
+      parameter_name = name;
+      parameter_value = val;
+    }
   }
   public static class Script
   {
-    public static void Run(DatumNodeService datumnode, string equipment_serial, out System.Collections.Generic.List<DatumNode.Parameter> result)
+    public static void Run(DatumNodeService datumnode, string equipment_serial, string equipment_prov_method, out System.Collections.Generic.List<Parameter> result)
     {
       if (equipment_serial == null)
         throw new Exception("equipment_serial is empty");
 
-      result = new List<DatumNode.Parameter>();
+      result = new List<Parameter>();
 
       try
       {
@@ -34,26 +40,78 @@ namespace DatumNode
 
         int? cpeId = Int32.Parse(resultGetCpe["result_num"].ToString());
 
-        var cpeInfoList = datumnode.ExecuteQuery("*.*.ossResource.sltu.common.getcpeparams", new Dictionary<string, object>()
+        var cpeInfoSet = datumnode.ExecuteQuery("*.*.gs_api.store_api.Api.get_cpe_info", new Dictionary<string, object>()
         {
-          { "cpeid", cpeId }
-        }).Elements.Where(x => x.Name == "Entity" && !x.Element("descriptionname").ToString().Contains("Сервисные модели")).Select(x =>
+          {"sn", equipment_serial},
+          {"comm_id",  cpeId}
+        });
+
+        resultId = Int32.Parse(cpeInfoSet["result"].ToString());
+        result_text = cpeInfoSet["result_text"] as string;
+        if (resultId.HasValue == false || resultId.HasValue == true && resultId.Value < 1)
+          throw new Exception(result_text);
+
+        var xDocXml = cpeInfoSet["xml"] as string;
+        var xDoc = XDocument.Parse(xDocXml);
+        var cpe = xDoc.Descendants("cpe").First();
+
+        const string cpeTypeNameTag = "TYPDEVICE_NAME";
+        const string cpeModelTag = "MARKACOMM_NAME";
+        const string cpeVendorTag = "VENDOR_NAME";
+        const string cpeMacAddressTag = "MAC_ADDRESS";
+        const string cpePonSerialTag = "PON_SERIAL";
+        const string cpeConditionTag = "DEV_CONDITION_NAME";
+        const string cpeTransferConditionTag = "TRANSFER_CONDITION_NAME";
+        const string cpeExploitStatusTag = "EXPLOIT_STATUS_NAME";
+
+        if (cpe == null)
+          return;
+
+        if (cpe.Element(cpeTypeNameTag) != null)
+          result.Add(new Parameter("Тип оборудования", (string)cpe.Element(cpeTypeNameTag)));
+
+        if (cpe.Element(cpeModelTag) != null)
+          result.Add(new Parameter("Модель оборудования", (string)cpe.Element(cpeModelTag)));
+
+        if (cpe.Element(cpeVendorTag) != null)
+          result.Add(new Parameter("Производитель", (string)cpe.Element(cpeVendorTag)));
+
+        if (cpe.Element(cpeMacAddressTag) != null)
+          result.Add(new Parameter("MAC-адрес", (string)cpe.Element(cpeMacAddressTag)));
+
+        if (cpe.Element(cpePonSerialTag) != null)
+          result.Add(new Parameter("PON Номер", (string)cpe.Element(cpePonSerialTag)));
+
+        if (cpe.Element(cpeConditionTag) != null)
+          result.Add(new Parameter("Состояние", (string)cpe.Element(cpeConditionTag)));
+
+        if (cpe.Element(cpeExploitStatusTag) != null)
+          result.Add(new Parameter("Статус", (string)cpe.Element(cpeExploitStatusTag)));
+
+        if (!string.IsNullOrEmpty(equipment_prov_method))
         {
-          return new Parameter()
+          var cpeTransferResult = datumnode.Execute("*.*.oss.external.sri.getTag", new Dictionary<string, object>()
           {
-            parameter_name = (string)x.Element("descriptionname"),
-            parameter_value = (string)x.Element("descriptionvalue")
-          };
-        }).ToList();
+            {"synonimTag", equipment_prov_method},
+            {"tagGroupSyn",  "equipmentProvidingMethod"},
+            {"extSystem",  "COMB2B"},
+          });
 
-        var cpeInfo = new DatumNode.Parameter
-        {
-          parameter_name = "Идентификатор в Склад CPE",
-          parameter_value = cpeId.Value.ToString()
-        };
+          var cpeTransferCondition = cpeTransferResult["result"] as string;
 
+          if (!string.IsNullOrEmpty(cpeTransferCondition))
+            result.Add(new Parameter("Условие передачи", cpeTransferCondition));
+          else if (cpe.Element(cpeTransferConditionTag) != null)
+            result.Add(new Parameter("Условие передачи", (string)cpe.Element(cpeTransferConditionTag)));
+        }
+        else
+				{
+          if (cpe.Element(cpeTransferConditionTag) != null)
+            result.Add(new Parameter("Условие передачи", (string)cpe.Element(cpeTransferConditionTag)));
+        }
+        
+        var cpeInfo = new Parameter("Идентификатор в Склад CPE", cpeId.Value.ToString());
         result.Add(cpeInfo);
-        result.AddRange(cpeInfoList);
       }
       catch (Exception e)
       {
