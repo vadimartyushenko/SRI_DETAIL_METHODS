@@ -54,8 +54,12 @@ begin
             where level=2
              connect by   t.territory_id= prior t.territory_parent_id
             start with t.territory_id=tr.territory_id
-           ) as filial_name
-      from t_recalculation_service rc
+           ) as filial_name,
+          (
+            select rc.recalculation_end_local - rc.recalculation_begin_local+1 from dual
+            where rc.recalculation_end_local is not null
+          ) as recalculation_days
+       from t_recalculation_service rc
         cross join t_binds b
         join territory tr           on rc.territory_id = tr.territory_id
       left join external_resource_type et on et.ext_resource_parent_type_id is null and  et.public_resource_type_id=rc.public_resource_type_id and et.external_system_type_id=rc.external_system_type_id
