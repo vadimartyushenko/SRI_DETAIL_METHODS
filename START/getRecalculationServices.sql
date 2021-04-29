@@ -54,8 +54,7 @@ begin
             where level=2
              connect by   t.territory_id= prior t.territory_parent_id
             start with t.territory_id=tr.territory_id
-           ) as filial_name,
-          (select rc.
+           ) as filial_name
       from t_recalculation_service rc
         cross join t_binds b
         join territory tr           on rc.territory_id = tr.territory_id
